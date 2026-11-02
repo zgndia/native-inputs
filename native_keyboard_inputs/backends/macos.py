@@ -73,6 +73,10 @@ class MacOSBackend(InputBackend):
             )
             self._cg.CGEventCreateKeyboardEvent.argtypes = (ctypes.c_void_p, ctypes.c_ushort, ctypes.c_bool)
             self._cg.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
+            self._cg.CGEventKeyboardSetUnicodeString.argtypes = (
+                ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ushort),
+            )
+            self._cg.CGEventKeyboardSetUnicodeString.restype = None
             self._cg.CGEventCreateMouseEvent.argtypes = (ctypes.c_void_p, ctypes.c_uint32, CGPoint, ctypes.c_uint32)
             self._cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
             self._cg.CGEventCreateScrollWheelEvent.argtypes = (
@@ -100,6 +104,24 @@ class MacOSBackend(InputBackend):
             self._cg.CGEventPost(_HID_EVENT_TAP, event)
         finally:
             self._cf.CFRelease(event)
+
+    def type_text(self, text: str) -> None:
+        """Inject Unicode text using Core Graphics Unicode keyboard events."""
+        if not isinstance(text, str):
+            raise TypeError("text must be a string.")
+        for character in text:
+            encoded = character.encode("utf-16-le")
+            units = [int.from_bytes(encoded[i:i + 2], "little") for i in range(0, len(encoded), 2)]
+            buffer = (ctypes.c_ushort * len(units))(*units)
+            for key_down in (True, False):
+                event = self._cg.CGEventCreateKeyboardEvent(None, 0, key_down)
+                if not event:
+                    raise InputInjectionError("Core Graphics could not create a Unicode keyboard event.")
+                try:
+                    self._cg.CGEventKeyboardSetUnicodeString(event, len(units), buffer)
+                    self._cg.CGEventPost(_HID_EVENT_TAP, event)
+                finally:
+                    self._cf.CFRelease(event)
 
     def key_down(self, key: str) -> None:
         if key not in _KEY_CODES:

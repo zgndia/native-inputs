@@ -56,6 +56,7 @@ INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
 KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 KEYEVENTF_SCANCODE = 0x0008
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -173,6 +174,19 @@ class WindowsBackend(InputBackend):
         event.type = INPUT_MOUSE
         event.union.mi = MOUSEINPUT(dx, dy, data & 0xFFFFFFFF, flags, 0, 0)
         return event
+
+    def type_text(self, text: str) -> None:
+        """Inject Unicode text with KEYEVENTF_UNICODE (not physical key presses)."""
+        if not isinstance(text, str):
+            raise TypeError("text must be a string.")
+        for character in text:
+            # Windows SendInput expects UTF-16 code units. Supplementary-plane
+            # characters (such as many emoji) are represented by a surrogate pair.
+            encoded = character.encode("utf-16-le")
+            units = [int.from_bytes(encoded[i:i + 2], "little") for i in range(0, len(encoded), 2)]
+            for unit in units:
+                self._send(self._keyboard_input(scan=unit, flags=KEYEVENTF_UNICODE))
+                self._send(self._keyboard_input(scan=unit, flags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
 
     def key_down(self, key: str) -> None:
         if key in _SCANS:

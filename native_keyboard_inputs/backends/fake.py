@@ -22,6 +22,9 @@ class FakeBackend(InputBackend):
         self.events.append(("key_up", key))
         self.held_keys.discard(key)
 
+    def type_text(self, text: str) -> None:
+        self.events.append(("type_text", text))
+
     def mouse_down(self, button: str) -> None:
         self.events.append(("mouse_down", button))
         self.held_buttons.add(button)

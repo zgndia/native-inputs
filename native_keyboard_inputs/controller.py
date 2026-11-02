@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 import threading
 import time
@@ -232,6 +233,24 @@ class Keyboard:
 
     def hold(self, key: str, duration: float = 1.0, *, blocking: bool = True):
         return self.tap(key, duration, blocking=blocking)
+
+    async def type(self, text: str, interval: float = 0.05) -> None:
+        """Type text asynchronously, optionally waiting between characters.
+
+        Text entry uses each native backend's text-injection implementation;
+        it is distinct from ``tap()``, which presses a physical key.
+        """
+        if not isinstance(text, str):
+            raise TypeError("text must be a string.")
+        delay = self._controller._validate_duration(interval)
+        self._controller._ensure_open()
+        # Normalize common newline conventions so CRLF is not entered twice.
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        for index, character in enumerate(normalized):
+            self._controller._ensure_open()
+            self._controller.backend.type_text(character)
+            if delay and index < len(normalized) - 1:
+                await asyncio.sleep(delay)
 
     def press_many(self, *keys: str) -> None:
         names = [self._controller._resolve("key", key) for key in keys]

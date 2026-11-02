@@ -64,6 +64,35 @@ _KEY_CODES = {
 for _number in range(13, 25):
     _KEY_CODES[f"f{_number}"] = 183 + (_number - 13)
 
+
+# Character-to-physical-key map for a US QWERTY layout. Linux uinput emits
+# physical evdev keycodes; the active desktop layout interprets those codes.
+# This mapping therefore intentionally documents its US-layout assumption.
+_TEXT_KEYS: dict[str, tuple[str, bool]] = {}
+for _letter in "abcdefghijklmnopqrstuvwxyz":
+    _TEXT_KEYS[_letter] = (_letter, False)
+    _TEXT_KEYS[_letter.upper()] = (_letter, True)
+for _digit in "0123456789":
+    _TEXT_KEYS[_digit] = (_digit, False)
+_TEXT_KEYS.update({
+    " ": ("space", False), "\n": ("enter", False), "\t": ("tab", False),
+    "-": ("minus", False), "_": ("minus", True),
+    "=": ("equal", False), "+": ("equal", True),
+    "[": ("left_bracket", False), "{": ("left_bracket", True),
+    "]": ("right_bracket", False), "}": ("right_bracket", True),
+    "\\": ("backslash", False), "|": ("backslash", True),
+    ";": ("semicolon", False), ":": ("semicolon", True),
+    "'": ("apostrophe", False), '"': ("apostrophe", True),
+    "`": ("grave", False), "~": ("grave", True),
+    ",": ("comma", False), "<": ("comma", True),
+    ".": ("period", False), ">": ("period", True),
+    "/": ("slash", False), "?": ("slash", True),
+    "!": ("1", True), "@": ("2", True), "#": ("3", True),
+    "$": ("4", True), "%": ("5", True), "^": ("grave", True),
+    "&": ("7", True), "*": ("8", True), "(": ("9", True),
+    ")": ("0", True),
+})
+
 _BUTTON_CODES = {"left": 0x110, "right": 0x111, "middle": 0x112, "x1": 0x113, "x2": 0x114}
 
 
@@ -197,6 +226,28 @@ class LinuxBackend(InputBackend):
                 raise OSError(f"short write to uinput device ({written}/{len(payload)} bytes)")
         except OSError as exc:
             raise InputInjectionError(f"Writing to the Linux uinput device failed: {exc}") from exc
+
+    def type_text(self, text: str) -> None:
+        """Type ASCII using US-QWERTY evdev positions; non-ASCII is unsupported."""
+        if not isinstance(text, str):
+            raise TypeError("text must be a string.")
+        for character in text:
+            mapping = _TEXT_KEYS.get(character)
+            if mapping is None:
+                raise UnsupportedInputError(
+                    f"Linux uinput text entry does not map {character!r}. "
+                    "This dependency-free backend currently supports ASCII with a US QWERTY mapping."
+                )
+            key, needs_shift = mapping
+            events = []
+            shift_already_held = "left_shift" in self._held_keys or "right_shift" in self._held_keys
+            if needs_shift and not shift_already_held:
+                events.append((EV_KEY, _KEY_CODES["left_shift"], 1))
+            events.append((EV_KEY, _KEY_CODES[key], 1))
+            events.append((EV_KEY, _KEY_CODES[key], 0))
+            if needs_shift and not shift_already_held:
+                events.append((EV_KEY, _KEY_CODES["left_shift"], 0))
+            self._emit(events)
 
     def key_down(self, key: str) -> None:
         if key not in _KEY_CODES:

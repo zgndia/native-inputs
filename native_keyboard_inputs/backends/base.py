@@ -15,6 +15,11 @@ class InputBackend(ABC):
     def key_up(self, key: str) -> None: ...
 
     @abstractmethod
+    def type_text(self, text: str) -> None:
+        """Inject text using the backend's native text-entry mechanism."""
+        ...
+
+    @abstractmethod
     def mouse_down(self, button: str) -> None: ...
 
     @abstractmethod

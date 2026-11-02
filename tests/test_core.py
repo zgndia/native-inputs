@@ -58,6 +58,27 @@ class CoreTests(unittest.TestCase):
         self.assertIn(("move_relative", 4, -2), self.backend.events)
         self.assertIn(("scroll", -1, 2), self.backend.events)
 
+    def test_async_type_sends_text_characters(self):
+        import asyncio
+        asyncio.run(self.controller.keyboard.type("Hello ;)" , interval=0))
+        self.assertEqual(
+            [event for event in self.backend.events if event[0] == "type_text"],
+            [("type_text", character) for character in "Hello ;)"] ,
+        )
+
+    def test_async_type_normalizes_newlines(self):
+        import asyncio
+        asyncio.run(self.controller.keyboard.type("a\r\nb", interval=0))
+        self.assertEqual(
+            [event[1] for event in self.backend.events if event[0] == "type_text"],
+            ["a", "\n", "b"],
+        )
+
+    def test_type_rejects_non_string(self):
+        import asyncio
+        with self.assertRaises(TypeError):
+            asyncio.run(self.controller.keyboard.type(123, interval=0))
+
     def test_hotkey_releases_in_reverse_order(self):
         self.controller.keyboard.hotkey("ctrl", "c", interval=0)
         self.assertEqual(self.backend.events, [

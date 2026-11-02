@@ -101,6 +101,27 @@ For isolated code and tests, prefer creating your own `InputController` rather t
 
 ### Keyboard
 
+Text entry is available as an asynchronous operation:
+
+```python
+import asyncio
+from native_keyboard_inputs import keyboard
+
+async def main():
+    await keyboard.type("Hello, World!", interval=0.05)
+
+asyncio.run(main())
+```
+
+`keyboard.type()` injects text, whereas `keyboard.tap()` presses a physical key.
+Text-entry support depends on the operating system: Windows uses Unicode
+`SendInput` events, macOS uses Core Graphics Unicode keyboard events, and the
+minimal-dependency Linux `uinput` backend currently maps ASCII using US QWERTY
+physical key positions. Non-ASCII text is explicitly rejected on Linux rather
+than silently producing incorrect characters. Linux text entry may not match
+a non-US active keyboard layout. Synthetic text events may also be ignored by
+some games or applications.
+
 ```python
 keyboard.press(key)
 keyboard.release(key)
