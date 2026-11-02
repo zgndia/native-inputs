@@ -1,0 +1,231 @@
+# Native keyboard inputs
+
+**Native keyboard inputs** is a dependency-free Python package for injecting keyboard and mouse events on Windows, Linux, and macOS.
+
+- Distribution name: `native-keyboard-inputs`
+- Import name: `native_keyboard_inputs`
+- Python: 3.10+
+- Required third-party dependencies: none
+- License: MIT
+
+> **Compatibility note:** native input injection is inherently OS- and application-dependent. This package provides a shared API, not a guarantee that every application, game, remote desktop, secure desktop, or anti-cheat protected process will accept synthetic events. Unsupported key mappings raise `UnsupportedInputError` instead of silently sending a different key.
+
+## Features
+
+- Keyboard key-down and key-up events.
+- Mouse button down/up for left, right, middle, X1, and X2 where supported.
+- Relative pointer movement; absolute pointer movement where supported.
+- Vertical and horizontal wheel events.
+- Built-in aliases and custom aliases.
+- Timed blocking and non-blocking holds.
+- Chords/hotkeys and context-managed holds.
+- Overlapping timed holds are reference-counted so one task cannot release an input still held by another task.
+- A simulated backend for tests and dry runs.
+- Native backends implemented with Python's standard library and OS APIs.
+
+Text entry (Unicode strings) is deliberately not included in this first release. Typing text is not equivalent to pressing physical keys: it depends on keyboard layout, dead keys, IMEs, compose sequences, and OS-specific text services. The API focuses on portable physical input events.
+
+## Installation
+
+Install from a local checkout:
+
+```bash
+python -m pip install .
+```
+
+Or install an editable development copy:
+
+```bash
+python -m pip install -e .
+```
+
+There are no runtime dependencies. Building/installing the package may require a recent `setuptools` on systems that do not already have it.
+
+## Quick start
+
+```python
+from native_keyboard_inputs import keyboard, mouse
+
+# Press and release a key.
+keyboard.press("a")
+keyboard.release("a")
+
+# A short key tap (50 ms by default).
+keyboard.tap("space")
+
+# Aliases are case-insensitive and accept spaces/hyphens.
+keyboard.tap("ESC")
+keyboard.tap("numpad-2")
+
+# Hold a key for two seconds.
+keyboard.hold("shift", duration=2)
+
+# Send a chord; keys are released in reverse order.
+keyboard.hotkey("ctrl", "c")
+
+# Mouse buttons and movement.
+mouse.click("left")
+mouse.press("rmb")
+mouse.release("right")
+mouse.move_relative(20, -10)
+mouse.scroll(vertical=3, horizontal=-1)
+
+# Always release all inputs during shutdown/error handling.
+keyboard.release_all()
+mouse.release_all()
+```
+
+## Choosing a backend
+
+The default backend is selected automatically using the current operating system. Backend initialization is lazy: importing the package does not create a virtual device or inject events.
+
+```python
+from native_keyboard_inputs import InputController, configure
+
+# Replace the process-wide default backend.
+configure("windows")
+
+# Configure Linux absolute pointer coordinates.
+configure("linux", screen_size=(1920, 1080))
+
+# Use a simulated backend for testing (no real input is sent).
+controller = InputController("fake")
+controller.keyboard.tap("space")
+print(controller.backend.events)
+controller.close()
+```
+
+For isolated code and tests, prefer creating your own `InputController` rather than reconfiguring the process-wide default.
+
+## API
+
+### Keyboard
+
+```python
+keyboard.press(key)
+keyboard.release(key)
+keyboard.tap(key, duration=0.05, blocking=True)
+keyboard.hold(key, duration=1.0, blocking=True)
+keyboard.press_many("ctrl", "shift")
+keyboard.release_many("ctrl", "shift")
+keyboard.hotkey("ctrl", "c", interval=0.03)
+keyboard.held("shift")       # context manager
+keyboard.register_alias("jump", "space")
+keyboard.unregister_alias("jump")
+keyboard.release_all()
+```
+
+A non-blocking timed hold returns an `InputTask`:
+
+```python
+task = keyboard.hold("space", duration=5, blocking=False)
+# Do other work...
+task.cancel()  # releases the input immediately
+# Or: task.wait(); task.done; task.error
+```
+
+### Mouse
+
+```python
+mouse.press("left")
+mouse.release("left")
+mouse.click("right", duration=0.05, blocking=True)
+mouse.double_click("left")
+mouse.held("left")             # context manager
+mouse.move_relative(10, -5)
+mouse.move_to(400, 300)
+mouse.scroll(vertical=2, horizontal=-1)
+mouse.register_alias("fire", "left")
+mouse.release_all()
+```
+
+On Linux, absolute pointer movement requires a `screen_size=(width, height)` either when configuring the backend or on each `move_to` call. Coordinates are scaled to the uinput device's absolute range. Relative pointer movement does not need screen dimensions. On multi-monitor Linux desktops, the supplied size should describe the coordinate space expected by the compositor; per-monitor negative-origin layouts may require platform-specific handling.
+
+On Windows, absolute coordinates are in the virtual desktop coordinate space, including multi-monitor offsets. On macOS, coordinates use Core Graphics desktop points.
+
+### Aliases and canonical names
+
+Names are case-insensitive. Spaces and hyphens are normalized to underscores. Some built-in examples:
+
+| Alias | Canonical name |
+|---|---|
+| `esc` | `escape` |
+| `return` | `enter` |
+| `spacebar` | `space` |
+| `ctrl` | `left_ctrl` |
+| `shift` | `left_shift` |
+| `alt` / `option` | `left_alt` |
+| `cmd` / `win` / `super` | `left_super` |
+| `pgup` | `page_up` |
+| `pgdn` | `page_down` |
+| `np2` / `num2` | `numpad_2` |
+| `lmb` | mouse `left` |
+| `rmb` | mouse `right` |
+| `mmb` | mouse `middle` |
+
+Punctuation can also be addressed by its symbol, for example `keyboard.tap("-")` or `keyboard.tap("[")`.
+
+The complete canonical keyboard-name list is available as `KEY_NAMES`; categories are exposed as `KEY_CATEGORIES`. Mouse buttons are available as `MOUSE_BUTTONS`.
+
+The canonical key names describe physical key positions on a conventional PC keyboard where the OS provides a mapping. They do not guarantee identical characters across international keyboard layouts. For example, key injection and Unicode text entry are separate problems.
+
+### Concurrency and state
+
+- A direct `press()` is idempotent until a matching `release()`.
+- `hold()` and `tap()` use independent leases. Overlapping holds of the same key/button will only send key-up after the final lease ends and no direct press remains.
+- `release_all()` cancels outstanding scheduled holds and attempts to release keys and buttons tracked by that controller.
+- Use `with InputController(...) as controller:` or call `close()` to release inputs and close backend resources.
+- Avoid using multiple independent controllers to inject the same physical key concurrently. Their state tracking is intentionally controller-local.
+- If the process is forcibly terminated or the OS/backend crashes, Python cannot guarantee cleanup. Keep holds short and use `try/finally` or context managers.
+
+## Platform details and limitations
+
+### Windows
+
+Backend: `SendInput` through `ctypes` and `user32.dll`.
+
+- Keyboard injection uses Set-1 scan codes for physical keys where available; some extended/media keys use virtual-key codes.
+- Mouse input supports buttons, relative motion, virtual-desktop absolute motion, and both wheel axes.
+- Windows applies User Interface Privilege Isolation (UIPI). A process generally cannot inject into a target running at a higher integrity level. `SendInput` may fail without clearly identifying UIPI as the cause.
+- Secure desktop, protected processes, anti-cheat software, and some games may reject synthetic events.
+
+### Linux
+
+Backend: `/dev/uinput`, using the Linux kernel uinput interface directly.
+
+- No X11-only dependency is used; uinput creates a virtual input device consumed by the system input stack.
+- The user needs permission to open/configure `/dev/uinput`. Prefer a narrowly scoped udev rule/group permission over running an entire application as root.
+- Whether a compositor or application accepts the events still depends on its input/security policy.
+- Relative mouse movement and wheel events are supported. Absolute movement requires a known `screen_size` and is scaled to the virtual device range.
+- A kernel with the modern `UI_DEV_SETUP` and `UI_ABS_SETUP` uinput ioctls is required by this initial backend implementation.
+
+### macOS
+
+Backend: Core Graphics Quartz events through the Application Services framework.
+
+- Keyboard events use macOS virtual key codes.
+- Mouse buttons, pointer movement, and two-axis scrolling are supported by Core Graphics.
+- macOS privacy controls may require the calling application/terminal to be granted the relevant Accessibility or Input Monitoring permission, depending on macOS version and how the process is launched.
+- Some keys have no public virtual-key mapping on macOS; they raise `UnsupportedInputError`. In this initial key map, this includes browser navigation keys, F21–F24, Insert, Menu, Num Lock, Pause, Print Screen, Scroll Lock, and the media/volume keys.
+- System security restrictions and protected applications may reject or ignore injected events.
+
+## Testing
+
+Tests use the fake backend and do not send real input:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+A quick manual smoke test on each operating system is still necessary to verify OS permissions and target-application behavior.
+
+## Safety
+
+This package injects input events; it does not record, monitor, or intercept the user's physical keyboard or mouse. Use it only on systems and applications where you are authorized to automate input. Do not use it to bypass application security controls, anti-cheat systems, or access restrictions.
+
+## Native API references
+
+- Microsoft: [SendInput](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-sendinput)
+- Linux kernel: [uinput userspace API](https://docs.kernel.org/input/uinput.html)
+- Apple: [CGEventCreateKeyboardEvent](https://developer.apple.com/documentation/coregraphics/cgevent/init%28keyboardeventsource%3Avirtualkey%3Akeydown%3A)
+- Apple: [Core Graphics CGEvent](https://developer.apple.com/documentation/coregraphics/cgevent)

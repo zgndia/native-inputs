@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+recursive-include native_keyboard_inputs *.py py.typed
+recursive-include tests *.py
+recursive-include examples *.py
