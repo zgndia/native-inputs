@@ -17,7 +17,7 @@ from .exceptions import (
 )
 from .keys import KEY_CATEGORIES, KEY_NAMES, MOUSE_BUTTONS
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 
 _default_lock = threading.RLock()
 _default_controller: InputController | None = None

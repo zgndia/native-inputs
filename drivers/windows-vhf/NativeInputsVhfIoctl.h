@@ -1,0 +1,13 @@
+#pragma once
+
+/* Shared user/kernel control contract. Reports omit the HID report-ID byte;
+ * VhfReadReportSubmit receives that value in HID_XFER_PACKET.reportId. */
+
+#define NI_IOCTL_SEND_KEYBOARD_REPORT CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+#define NI_IOCTL_SEND_MOUSE_REPORT    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+
+#define NI_KEYBOARD_REPORT_ID 0x01
+#define NI_MOUSE_REPORT_ID    0x02
+
+#define NI_KEYBOARD_REPORT_LENGTH 8
+#define NI_MOUSE_REPORT_LENGTH    4

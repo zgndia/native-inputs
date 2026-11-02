@@ -1,0 +1,57 @@
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ProviderName%
+CatalogFile = NativeInputsVhf.cat
+PnpLockdown = 1
+DriverVer   = 11/03/2026,0.1.0.0
+
+[Manufacturer]
+%ProviderName% = NativeInputsVhfModels,NTamd64
+
+[NativeInputsVhfModels.NTamd64]
+%DeviceDesc% = NativeInputsVhf_Install,Root\NativeInputsVhf
+
+[NativeInputsVhf_Install.NT]
+CopyFiles = NativeInputsVhf_CopyFiles
+
+[NativeInputsVhf_Install.NT.HW]
+AddReg = NativeInputsVhf_Install.NT.HW.AddReg
+
+[NativeInputsVhf_Install.NT.HW.AddReg]
+HKR,,LowerFilters,0x00010000,"vhf"
+
+[NativeInputsVhf_Install.NT.Services]
+AddService = NativeInputsVhf,0x00000002,NativeInputsVhf_Service
+
+[NativeInputsVhf_Service]
+DisplayName   = %ServiceName%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %13%\NativeInputsVhf.sys
+
+[NativeInputsVhf_Install.NT.Wdf]
+KmdfService = NativeInputsVhf,NativeInputsVhf_Wdf
+
+[NativeInputsVhf_Wdf]
+KmdfLibraryVersion = 1.15
+
+[NativeInputsVhf_CopyFiles]
+NativeInputsVhf.sys
+
+[DestinationDirs]
+NativeInputsVhf_CopyFiles = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+NativeInputsVhf.sys = 1
+
+[Strings]
+ProviderName = "Native Inputs Project"
+DeviceDesc  = "Native Inputs Virtual HID Source"
+ServiceName = "Native Inputs VHF Source Driver"
+DiskName    = "Native Inputs Driver Installation Media"

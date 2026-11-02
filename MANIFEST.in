@@ -5,3 +5,4 @@ include pyproject.toml
 recursive-include native_keyboard_inputs *.py py.typed
 recursive-include tests *.py
 recursive-include examples *.py
+recursive-include drivers/windows-vhf *.c *.h *.inf *.vcxproj *.md

@@ -108,7 +108,7 @@ import asyncio
 from native_keyboard_inputs import keyboard
 
 async def main():
-    await keyboard.type("Hello, World!", interval=0.05)
+    await keyboard.type("Hello ;)", interval=0.05)
 
 asyncio.run(main())
 ```
@@ -203,12 +203,48 @@ The canonical key names describe physical key positions on a conventional PC key
 
 ### Windows
 
-Backend: `SendInput` through `ctypes` and `user32.dll`.
+Backend: Win32 APIs through `ctypes` and `user32.dll`.
 
-- Keyboard injection uses Set-1 scan codes for physical keys where available; some extended/media keys use virtual-key codes.
+The default keyboard injection uses `SendInput` with Set-1 scan codes for physical keys where available; some extended/media keys use virtual-key codes. For compatibility testing, the Windows backend also accepts `keyboard_mode="virtual_key"` (SendInput using virtual-key codes) or `keyboard_mode="keybd_event"` (the legacy Windows keyboard API). For example:
+
+```python
+from native_keyboard_inputs import configure, keyboard
+
+# Default: physical scan codes with SendInput.
+configure("windows", keyboard_mode="scancode")
+keyboard.tap("t")
+
+# Compatibility test: virtual-key SendInput.
+configure("windows", keyboard_mode="virtual_key")
+keyboard.tap("t")
+
+# Compatibility test: legacy keybd_event.
+configure("windows", keyboard_mode="keybd_event")
+keyboard.tap("t")
+```
+
+`keybd_event` is deprecated by Microsoft in favor of `SendInput`, has no return value, and is offered only as a legacy compatibility experiment. None of these modes guarantees that a game will consume synthetic events. Do not use these modes to evade anti-cheat or other application security controls. Mouse events always use `SendInput`.
 - Mouse input supports buttons, relative motion, virtual-desktop absolute motion, and both wheel axes.
 - Windows applies User Interface Privilege Isolation (UIPI). A process generally cannot inject into a target running at a higher integrity level. `SendInput` may fail without clearly identifying UIPI as the cause.
 - Secure desktop, protected processes, anti-cheat software, and some games may reject synthetic events.
+
+#### Optional Windows VHF backend
+
+The project also includes an optional `windows_vhf` backend. It uses a companion KMDF driver and Microsoft's Virtual HID Framework to expose a **virtual** HID keyboard and mouse to the Windows HID stack. This is not a physical USB device and does not guarantee acceptance by any particular application. The existing `windows`/`SendInput` backend remains the default.
+
+Build, signing, installation, supported controls, limitations, and usage are documented in [`drivers/windows-vhf/README.md`](drivers/windows-vhf/README.md). Once the driver is built, correctly signed, installed, and started, select it explicitly:
+
+```python
+from native_keyboard_inputs import InputController
+
+with InputController("windows_vhf") as inputs:
+    inputs.keyboard.hotkey("ctrl", "shift", "esc")
+    inputs.keyboard.tap("a")
+    inputs.mouse.move_relative(50, 0)
+    inputs.mouse.click("left")
+```
+
+The initial VHF descriptor supports key down/up, modifiers, six-key rollover, relative mouse movement, five mouse buttons, and vertical scrolling. It does not support Unicode text entry, absolute mouse movement, horizontal wheel scrolling, or media/browser consumer keys. Run the Python process as Administrator because the driver control interface is restricted to Administrators and SYSTEM.
 
 ### Linux
 

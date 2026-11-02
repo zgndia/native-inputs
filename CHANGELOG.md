@@ -14,3 +14,15 @@
 - Added native Unicode text injection on Windows and macOS.
 - Added dependency-free ASCII text entry on Linux using a documented US QWERTY mapping.
 - Added simulated-backend tests for text entry and newline normalization.
+
+
+## 0.3.0
+
+- Added Windows keyboard injection mode selection: `scancode` (default), `virtual_key`, and legacy `keybd_event` for compatibility testing.
+- Kept mouse injection on `SendInput`; documented that API-level dispatch does not prove target-application consumption.
+
+## 0.4.0
+
+- Add an optional Windows `windows_vhf` backend using a companion KMDF/VHF virtual HID source driver.
+- Add keyboard and relative mouse HID report encoders and pure Python report tests.
+- Keep the existing Win32 `SendInput` backend as the default Windows backend.

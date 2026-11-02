@@ -18,6 +18,12 @@ def create_backend(name: str | None = None, **options) -> InputBackend:
     if selected == "windows":
         from .windows import WindowsBackend
         return WindowsBackend(**options)
+    if selected in {"windows_vhf", "vhf"}:
+        if options:
+            unexpected = ", ".join(sorted(options))
+            raise TypeError(f"windows_vhf does not accept backend options: {unexpected}")
+        from .windows_vhf import WindowsVHFBackend
+        return WindowsVHFBackend()
     if selected == "linux":
         from .linux import LinuxBackend
         return LinuxBackend(**options)
@@ -25,7 +31,7 @@ def create_backend(name: str | None = None, **options) -> InputBackend:
         from .macos import MacOSBackend
         return MacOSBackend(**options)
     raise UnsupportedPlatformError(
-        f"Unsupported backend {name!r}. Supported values: windows, linux, macos, fake."
+        f"Unsupported backend {name!r}. Supported values: windows, windows_vhf, linux, macos, fake."
     )
 
 

@@ -58,6 +58,8 @@ KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
 KEYEVENTF_SCANCODE = 0x0008
+MAPVK_VSC_TO_VK_EX = 3
+MAPVK_VK_TO_VSC_EX = 4
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
@@ -138,7 +140,28 @@ for _number in range(13, 25):
 class WindowsBackend(InputBackend):
     name = "windows"
 
-    def __init__(self) -> None:
+    def __init__(self, keyboard_mode: str = "scancode") -> None:
+        """Create the Windows backend.
+
+        keyboard_mode:
+            ``scancode``: SendInput with physical scan codes (default/recommended).
+            ``virtual_key``: SendInput with virtual-key codes (compatibility test).
+            ``keybd_event``: legacy keybd_event API (compatibility test only).
+
+        Mouse events always use SendInput. The alternate keyboard modes are not
+        anti-cheat workarounds and cannot make a protected game accept input.
+        """
+        aliases = {
+            "scan_code": "scancode", "sendinput_scancode": "scancode",
+            "vk": "virtual_key", "sendinput_vk": "virtual_key",
+            "legacy": "keybd_event",
+        }
+        mode = aliases.get(str(keyboard_mode).strip().lower(), str(keyboard_mode).strip().lower())
+        if mode not in {"scancode", "virtual_key", "keybd_event"}:
+            raise ValueError(
+                "keyboard_mode must be 'scancode', 'virtual_key', or 'keybd_event'."
+            )
+        self.keyboard_mode = mode
         try:
             self._user32 = ctypes.WinDLL("user32", use_last_error=True)
             self._send_input = self._user32.SendInput
@@ -147,8 +170,14 @@ class WindowsBackend(InputBackend):
             self._get_system_metrics = self._user32.GetSystemMetrics
             self._get_system_metrics.argtypes = (ctypes.c_int,)
             self._get_system_metrics.restype = ctypes.c_int
+            self._map_virtual_key = self._user32.MapVirtualKeyW
+            self._map_virtual_key.argtypes = (wintypes.UINT, wintypes.UINT)
+            self._map_virtual_key.restype = wintypes.UINT
+            self._keybd_event = self._user32.keybd_event
+            self._keybd_event.argtypes = (wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ULONG_PTR)
+            self._keybd_event.restype = None
         except Exception as exc:
-            raise BackendUnavailableError(f"Could not initialize Win32 SendInput: {exc}") from exc
+            raise BackendUnavailableError(f"Could not initialize Win32 input APIs: {exc}") from exc
         self._held_keys: set[str] = set()
         self._held_buttons: set[str] = set()
 
@@ -188,8 +217,40 @@ class WindowsBackend(InputBackend):
                 self._send(self._keyboard_input(scan=unit, flags=KEYEVENTF_UNICODE))
                 self._send(self._keyboard_input(scan=unit, flags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
 
-    def key_down(self, key: str) -> None:
+    def _key_codes(self, key: str) -> tuple[int, int, bool]:
+        """Return (virtual-key, scan-code, extended) for a canonical key."""
         if key in _SCANS:
+            scan, extended = _SCANS[key]
+            scan_with_prefix = scan | (0xE000 if extended else 0)
+            vk = int(self._map_virtual_key(scan_with_prefix, MAPVK_VSC_TO_VK_EX))
+            if not vk:
+                raise UnsupportedInputError(f"Key {key!r} has no Windows virtual-key mapping.")
+            return vk, scan, extended
+        if key in _VK_ONLY:
+            vk = _VK_ONLY[key]
+            mapped_scan = int(self._map_virtual_key(vk, MAPVK_VK_TO_VSC_EX))
+            scan = mapped_scan & 0xFF
+            extended = (mapped_scan & 0xFF00) in (0xE000, 0xE100)
+            return vk, scan, extended
+        raise UnsupportedInputError(f"Key {key!r} has no Windows mapping.")
+
+    def _send_legacy_key(self, key: str, key_up: bool) -> None:
+        vk, scan, extended = self._key_codes(key)
+        if not 1 <= vk <= 254:
+            raise UnsupportedInputError(f"Key {key!r} has no usable Windows virtual-key code.")
+        flags = (KEYEVENTF_EXTENDEDKEY if extended else 0) | (KEYEVENTF_KEYUP if key_up else 0)
+        # keybd_event has no return value. This confirms dispatch to the API,
+        # not consumption by the target game.
+        self._keybd_event(vk, scan, flags, 0)
+
+    def key_down(self, key: str) -> None:
+        if self.keyboard_mode == "keybd_event":
+            self._send_legacy_key(key, key_up=False)
+        elif self.keyboard_mode == "virtual_key":
+            vk, _scan, extended = self._key_codes(key)
+            flags = KEYEVENTF_EXTENDEDKEY if extended else 0
+            self._send(self._keyboard_input(vk=vk, flags=flags))
+        elif key in _SCANS:
             scan, extended = _SCANS[key]
             flags = KEYEVENTF_SCANCODE | (KEYEVENTF_EXTENDEDKEY if extended else 0)
             self._send(self._keyboard_input(scan=scan, flags=flags))
@@ -200,7 +261,13 @@ class WindowsBackend(InputBackend):
         self._held_keys.add(key)
 
     def key_up(self, key: str) -> None:
-        if key in _SCANS:
+        if self.keyboard_mode == "keybd_event":
+            self._send_legacy_key(key, key_up=True)
+        elif self.keyboard_mode == "virtual_key":
+            vk, _scan, extended = self._key_codes(key)
+            flags = KEYEVENTF_KEYUP | (KEYEVENTF_EXTENDEDKEY if extended else 0)
+            self._send(self._keyboard_input(vk=vk, flags=flags))
+        elif key in _SCANS:
             scan, extended = _SCANS[key]
             flags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP | (KEYEVENTF_EXTENDEDKEY if extended else 0)
             self._send(self._keyboard_input(scan=scan, flags=flags))
